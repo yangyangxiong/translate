@@ -1,0 +1,21 @@
+package com.translate.utils;
+
+public class Enchutils {
+	 public static char toLower(char ch)
+	 {
+	  if(ch <= 'Z' && ch >= 'A')
+	  {
+	   return (char)(ch-'A'+'a');
+	  }
+	  return ch;
+	 }
+	 
+	 public static char toUpper(char ch)
+	 {
+	  if(ch <= 'z' && ch >= 'a')
+	  {
+	   return (char)(ch-32);
+	  }
+	  return ch;
+	 }
+}

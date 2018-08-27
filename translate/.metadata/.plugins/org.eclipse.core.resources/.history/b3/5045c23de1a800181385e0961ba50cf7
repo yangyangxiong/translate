@@ -1,0 +1,3 @@
+#log
+logging.config=classpath:logback.xml
+logging.path=E:\\workspace\\rock\\jpa-test\\log

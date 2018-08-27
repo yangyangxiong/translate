@@ -1,0 +1,59 @@
+package com.translate.utils;
+
+import java.io.IOException;
+
+import org.apache.http.HttpEntity;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.util.EntityUtils;
+
+public class HttpClientUtil {
+	private static String DEFAULT_CHARSET = "UTF-8";
+	private synchronized static CloseableHttpClient getHttpClient() {
+		if (httpClient != null) {
+			return httpClient;
+		}
+	}
+	public static String doPost(String url, String content, String contentType)
+			throws Exception {
+		String result = null;
+
+		HttpEntity resEntity = null;
+		CloseableHttpResponse response = null;
+		try {
+			HttpPost post = new HttpPost(url);
+			if (contentType != null) {
+				post.setHeader("Content-Type", contentType);
+			}
+			post.setEntity(new StringEntity(content, DEFAULT_CHARSET));
+
+			CloseableHttpClient client = getHttpClient();
+			if (client == null || post == null) {
+				log.info("client is null");
+				return null;
+			}
+			response = client.execute(post);
+			resEntity = response.getEntity();
+			result = null == resEntity ? "" : EntityUtils.toString(resEntity,
+					DEFAULT_CHARSET);
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			try {
+				if (resEntity != null) {
+					EntityUtils.consume(resEntity);
+				}
+				if (response != null) {
+					response.close();
+				}
+
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
+		}
+		return result;
+	}
+}

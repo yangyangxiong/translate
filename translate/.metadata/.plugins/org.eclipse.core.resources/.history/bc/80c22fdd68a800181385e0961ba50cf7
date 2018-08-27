@@ -1,0 +1,618 @@
+package com.fedex.csonline.gateway.controller;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.log4j.Logger;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.util.CollectionUtils;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.fedex.csonline.gateway.service.CsOnlineService;
+import com.fedex.csonline.gateway.vo.ChatMainVo;
+import com.fedex.csonline.gateway.vo.LoginVo;
+import com.fedex.csonline.gateway.vo.ReplyVo;
+import com.fedex.csonline.gateway.vo.ReqVo;
+import com.fedex.csonline.gateway.vo.RespVo;
+import com.fedex.csonline.modle.AccQueue;
+import com.fedex.csonline.modle.CsInfo;
+import com.fedex.csonline.modle.CsTran;
+import com.fedex.csonline.util.LdapVerification;
+import com.fedex.csonline.util.Types;
+import com.fedex.wechat.framework.util.AppConfigContent;
+import com.fedex.wechat.framework.util.HttpClientUtil;
+import com.fedex.wechat.framework.util.JSONBean;
+import com.fedex.wechat.framework.util.LogUtil;
+import com.fedex.wechat.framework.util.StringUtil;
+
+/**
+ * 在线客服请求处理类
+ * 
+ * @author hzy
+ * @date 2016年11月23日
+ *
+ */
+@Controller
+@RequestMapping("/cs")
+public class CsOnlineController {
+	private Logger log = Logger.getLogger(getClass());
+	@Autowired
+	private CsOnlineService csOnlineService;
+
+	/**
+	 * 登录接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_LOGIN")
+	public @ResponseBody RespVo OPERTYPE_LOGIN(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_LOGIN.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				if (!LdapVerification.loginLdap(reqData.getAccount(), reqData.getPassword())) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("LDAP验证失败");
+				} else {
+					if (csOnlineService.isHaveLogin(reqData)) {
+						vo.setRetStatus(0);
+						vo.setErrMsg("账号已登陆或异常退出(如异常退出请稍等几分钟重新登陆)");
+					} else {
+						List<LoginVo> list = csOnlineService.csLogin(reqData);
+						if (CollectionUtils.isEmpty(list)) {
+							vo.setRetStatus(0);
+							vo.setErrMsg("未查到该员工信息或该员工没有权限");
+						} else {
+							vo.setRetStatus(1);
+							vo.setRetValue(list);
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 咨询项目类型接口
+	 * 
+	 * @param
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_SERVICE_TYPE")
+	public @ResponseBody RespVo OPERTYPE_SERVICE_TYPE() {
+		RespVo vo = new RespVo();
+		try {
+			List<String> list = csOnlineService.findServiceType();
+			vo.setRetStatus(1);
+			vo.setRetValue(list);
+		} catch (Exception e) {
+			vo.setRetStatus(0);
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 个人回复、公用回复查询接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_REPLY_QUERY")
+	public @ResponseBody RespVo OPERTYPE_REPLY_QUERY(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_REPLY_QUERY.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				List<ReplyVo> list = csOnlineService.findReply(reqData);
+				vo.setRetStatus(1);
+				vo.setRetValue(list);
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 个人回复新增接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_REPLY_ADD")
+	public @ResponseBody RespVo OPERTYPE_REPLY_ADD(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_REPLY_ADD.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				int count = csOnlineService.addReply(reqData);
+				if (count == 0) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("新增失败");
+				} else {
+					vo.setRetStatus(1);
+				}
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 个人回复编辑接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_REPLY_EDIT")
+	public @ResponseBody RespVo OPERTYPE_REPLY_EDIT(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_REPLY_EDIT.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				int count = csOnlineService.editReply(reqData);
+				if (count == 0) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("编辑失败");
+				} else {
+					vo.setRetStatus(1);
+				}
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 个人回复删除接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_REPLY_DEL")
+	public @ResponseBody RespVo OPERTYPE_REPLY_DEL(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_REPLY_DEL.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				int count = csOnlineService.delReply(reqData);
+				if (count == 0) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("删除失败");
+				} else {
+					vo.setRetStatus(1);
+				}
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 待接入列表查询接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_ACCESS_LIST")
+	public @ResponseBody RespVo OPERTYPE_ACCESS_LIST(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_ACCESS_LIST.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				List<AccQueue> list = csOnlineService.findAccQueue(reqData);
+				vo.setRetStatus(1);
+				vo.setRetValue(list);
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 待接入变化通知接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_ACCESS_CHANGE")
+	public @ResponseBody RespVo OPERTYPE_ACCESS_CHANGE(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_ACCESS_CHANGE.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				int count = csOnlineService.findAccQueueNum(reqData);
+				vo.setRetStatus(1);
+				vo.setRetValue(count);
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 主动接入客户接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_ACCESS_INITIATIVE")
+	public @ResponseBody RespVo OPERTYPE_ACCESS_INITIATIVE(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_ACCESS_INITIATIVE.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				int count = csOnlineService.addMsgMain(reqData);
+				if (count == 0) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("该客户已被其他客服接入");
+				} else {
+					vo.setRetStatus(1);
+					try {
+						// 客服接入欢迎语
+						String url = AppConfigContent.getProperty("WELCOME_PROMPT_URL");
+						if (!StringUtil.isEmpty(url)) {
+							Map<String, String> params = new HashMap<String, String>();
+							params.put("account", reqData.getAccount());
+							params.put("openId", reqData.getOpenId());
+							HttpClientUtil.doGet(url, params);
+						} else {
+							log.warn("No Set Value of Config 'WELCOME_PROMPT_URL'.");
+						}
+					} catch (Exception e) {
+						log.debug(LogUtil.logFormat(e));
+					}
+				}
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 更新在线状态接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_STATUS_UPDATE")
+	public @ResponseBody RespVo OPERTYPE_STATUS_UPDATE(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_STATUS_UPDATE.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				int count = csOnlineService.updateCsStatus(reqData);
+				if (count == -1) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("该客户存在未结束的客户会话");
+				} else {
+					vo.setRetStatus(count);
+					vo.setErrMsg(count == 0 ? "状态更新失败" : null);
+				}
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 系统自动接入通知接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_ACCESS_AUTO")
+	public @ResponseBody RespVo OPERTYPE_ACCESS_AUTO(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_ACCESS_AUTO.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+				log.debug("respData-->" + JSONBean.toJson(vo));
+				return vo;
+			}
+			// 更新客服最大接入数量
+			csOnlineService.updateAccessNum(reqData);
+
+			/**
+			 * 1、判断是否为下班时间（在进入等待队列表时做判断） 2、判断是否为在线状态（离线状态、忙碌状态不接受系统自动分配任务）
+			 * 3、判断是否在线人数小于接入数量
+			 */
+			// if(Utils.isOffWorkTime()){
+			// vo.setRetStatus(1);
+			// vo.setErrMsg("不在工作时间");
+			// log.debug("respData-->" + JSONBean.toJson(vo));
+			// return vo;
+			// }
+			if (csOnlineService.isNotOnlineStatus(reqData.getAccount())) {
+				vo.setRetStatus(1);
+				vo.setErrMsg("该客服不处于在线状态");
+				log.debug("respData-->" + JSONBean.toJson(vo));
+				return vo;
+			}
+			if (csOnlineService.isNotBeDeal(reqData.getAccount(), reqData.getAccessNum())) {
+				vo.setRetStatus(1);
+				vo.setErrMsg("该客服接入数量已满");
+				log.debug("respData-->" + JSONBean.toJson(vo));
+				return vo;
+			}
+
+			// 系统自动分配任务处理逻辑
+			int flag = csOnlineService.assignTask(reqData);
+			if (flag == -1) {
+				vo.setRetStatus(1);
+				vo.setErrMsg("当前没有客户需要接待");
+			} else {
+				vo.setRetStatus(1);
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 消息通知接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_MESSAGE_NOTICE")
+	public @ResponseBody RespVo OPERTYPE_MESSAGE_NOTICE(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_MESSAGE_NOTICE.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				List<ChatMainVo> list = csOnlineService.chatNotice(reqData);
+				vo.setRetStatus(1);
+				vo.setRetValue(list);
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 客服转接接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_CS_TRANSFER")
+	public @ResponseBody RespVo OPERTYPE_CS_TRANSFER(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_CS_TRANSFER.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				int flag = csOnlineService.csTransfer(reqData);
+				if (flag == 0) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("转接失败");
+				} else if (flag == -1) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("被转接客服已离线或退出客户端");
+				} else {
+					vo.setRetStatus(1);
+				}
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 被转接客服接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_CS_BETRANSFER")
+	public @ResponseBody RespVo OPERTYPE_CS_BETRANSFER(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (csOnlineService.isQuit(reqData.getAccount())) {
+				vo.setRetStatus(-1);
+				vo.setErrMsg("请重新登录");
+				log.debug("respData-->" + JSONBean.toJson(vo));
+				return vo;
+			}
+			if (Types.OPERTYPE_CS_BETRANSFER.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				csOnlineService.updateCsInfo(reqData.getAccount());
+				List<CsTran> list = csOnlineService.beTransfer(reqData);
+				vo.setRetStatus(1);
+				vo.setRetValue(list);
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	// /**
+	// * 自动接入数量更新接口
+	// *
+	// * @param reqData
+	// * @return
+	// */
+	// @RequestMapping("/OPERTYPE_ACCESS_UPDATE")
+	// public @ResponseBody RespVo OPERTYPE_ACCESS_UPDATE(ReqVo reqData) {
+	// log.debug("reqData-->" + JSONBean.toJson(reqData));
+	// RespVo vo = new RespVo();
+	// try{
+	// if(Types.OPERTYPE_ACCESS_UPDATE.reqDataCheck(reqData)){
+	// vo.setRetStatus(0);
+	// vo.setErrMsg("请求参数不合法");
+	// }else{
+	// int count = csOnlineService.updateAccessNum(reqData);
+	// if(count == 0){
+	// vo.setRetStatus(0);
+	// vo.setErrMsg("更新接入数量失败");
+	// }else{
+	// vo.setRetStatus(1);
+	// }
+	// }
+	// }catch(Exception e){
+	// log.debug(LogUtil.logFormat(e));
+	// vo.setRetStatus(0);
+	// vo.setErrMsg("服务器处理异常");
+	// }
+	// log.debug("respData-->" + JSONBean.toJson(vo));
+	// return vo;
+	// }
+
+	/**
+	 * 客服列表查询接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_CS_LIST")
+	public @ResponseBody RespVo OPERTYPE_CS_LIST(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_CS_LIST.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				List<CsInfo> list = csOnlineService.findCsInfo(reqData);
+				vo.setRetStatus(1);
+				vo.setRetValue(list);
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+
+	/**
+	 * 结束聊天接口
+	 * 
+	 * @param reqData
+	 * @return
+	 */
+	@RequestMapping("/OPERTYPE_CHAT_END")
+	public @ResponseBody RespVo OPERTYPE_CHAT_END(ReqVo reqData) {
+		log.debug("reqData-->" + JSONBean.toJson(reqData));
+		RespVo vo = new RespVo();
+		try {
+			if (Types.OPERTYPE_CHAT_END.reqDataCheck(reqData)) {
+				vo.setRetStatus(0);
+				vo.setErrMsg("请求参数不合法");
+			} else {
+				int count = csOnlineService.endChat(reqData);
+				if (count == 0) {
+					vo.setRetStatus(0);
+					vo.setErrMsg("结束聊天失败:不存在该会话");
+				} else {
+					String replyCode = csOnlineService.findSysReply("CSSYS005");
+					vo.setRetStatus(1);
+					vo.setErrMsg(replyCode);
+				}
+			}
+		} catch (Exception e) {
+			log.debug(LogUtil.logFormat(e));
+			vo.setRetStatus(0);
+			vo.setErrMsg("服务器处理异常");
+		}
+		log.debug("respData-->" + JSONBean.toJson(vo));
+		return vo;
+	}
+}

@@ -1,0 +1,4 @@
+server.port=8081
+#log
+logging.config=classpath:logback.xml
+logging.path=E://Log

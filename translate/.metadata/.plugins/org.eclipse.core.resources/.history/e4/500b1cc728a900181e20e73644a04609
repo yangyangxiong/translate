@@ -1,0 +1,259 @@
+package com.translate.utils;
+
+
+import com.translate.utils.Circle;
+
+
+
+
+import net.sf.json.JSONObject;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+
+import java.awt.geom.Point2D;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.net.URL;
+import java.util.List;
+
+/**
+ * Created by zjj
+ * Date : 2017/8/26 10:29
+ * Description : 地图工具类
+ */
+public class GeoUtils {
+
+    private final static double EARTHRADIUS = 6370996.81;
+
+    /**
+     * 判断点是否在多边形内
+     *
+     * @param point 检测点
+     * @param pts   多边形的顶点
+     * @return 点在多边形内返回true, 否则返回false
+     */
+    public static boolean IsPtInPoly(Point2D.Double point, List<Point2D.Double> pts) {
+
+        int N = pts.size();
+        boolean boundOrVertex = true; //如果点位于多边形的顶点或边上，也算做点在多边形内，直接返回true
+        int intersectCount = 0;//cross points count of x
+        double precision = 2e-10; //浮点类型计算时候与0比较时候的容差
+        Point2D.Double p1, p2;//neighbour bound vertices
+        Point2D.Double p = point; //当前点
+
+        p1 = pts.get(0);//left vertex
+        for (int i = 1; i <= N; ++i) {//check all rays
+            if (p.equals(p1)) {
+                return boundOrVertex;//p is an vertex
+            }
+
+            p2 = pts.get(i % N);//right vertex
+            if (p.x < Math.min(p1.x, p2.x) || p.x > Math.max(p1.x, p2.x)) {//ray is outside of our interests
+                p1 = p2;
+                continue;//next ray left point
+            }
+
+            if (p.x > Math.min(p1.x, p2.x) && p.x < Math.max(p1.x, p2.x)) {//ray is crossing over by the algorithm (common part of)
+                if (p.y <= Math.max(p1.y, p2.y)) {//x is before of ray
+                    if (p1.x == p2.x && p.y >= Math.min(p1.y, p2.y)) {//overlies on a horizontal ray
+                        return boundOrVertex;
+                    }
+
+                    if (p1.y == p2.y) {//ray is vertical
+                        if (p1.y == p.y) {//overlies on a vertical ray
+                            return boundOrVertex;
+                        } else {//before ray
+                            ++intersectCount;
+                        }
+                    } else {//cross point on the left side
+                        double xinters = (p.x - p1.x) * (p2.y - p1.y) / (p2.x - p1.x) + p1.y;//cross point of y
+                        if (Math.abs(p.y - xinters) < precision) {//overlies on a ray
+                            return boundOrVertex;
+                        }
+
+                        if (p.y < xinters) {//before ray
+                            ++intersectCount;
+                        }
+                    }
+                }
+            } else {//special case when ray is crossing through the vertex
+                if (p.x == p2.x && p.y <= p2.y) {//p crossing over p2
+                    Point2D.Double p3 = pts.get((i + 1) % N); //next vertex
+                    if (p.x >= Math.min(p1.x, p3.x) && p.x <= Math.max(p1.x, p3.x)) {//p.x lies between p1.x & p3.x
+                        ++intersectCount;
+                    } else {
+                        intersectCount += 2;
+                    }
+                }
+            }
+            p1 = p2;//next ray left point
+        }
+
+        if (intersectCount % 2 == 0) {//偶数在多边形外
+            return false;
+        } else { //奇数在多边形内
+            return true;
+        }
+    }
+
+    /**
+     * 判断点是否在圆内
+     *
+     * @param point  检测点
+     * @param circle 圆形区域
+     * @return 点在圆内返回true, 否则返回false
+     */
+    public static boolean isPointInCircle(Point2D.Double point, Circle circle) {
+
+        //point与圆心距离小于圆形半径，则点在圆内，否则在圆外
+        Point2D.Double c = circle.getCenter();
+        double r = circle.getRadius();
+
+        double dis = GeoUtils.getDistance(point, c);
+        if (dis <= r) {
+            return true;
+        } else {
+            return false;
+        }
+
+    }
+
+
+    private static double getDistance(Point2D.Double point1, Point2D.Double point2) {
+        point1.x = _getLoop(point1.x, -180, 180);
+        point1.y = _getRange(point1.y, -74d, 74d);
+        point2.x = _getLoop(point2.x, -180, 180);
+        point2.y = _getRange(point2.y, -74d, 74d);
+        Double x1, x2, y1, y2;
+        x1 = degreeToRad(point1.x);
+        y1 = degreeToRad(point1.y);
+        x2 = degreeToRad(point2.x);
+        y2 = degreeToRad(point2.y);
+        return EARTHRADIUS * Math.acos((Math.sin(y1) * Math.sin(y2) + Math.cos(y1) * Math.cos(y2) * Math.cos(x2 - x1)));
+    }
+
+    private static double degreeToRad(double degree) {
+        return Math.PI * degree / 180;
+    }
+
+    /**
+     * 坐标转换
+     *
+     * @param v 点的经纬度值
+     * @param a 表示地球经纬度的最小值，为负数
+     * @param b 表示地球经纬度的最大值，为正数
+     * @return 转化后的经纬度值
+     */
+    private static double _getLoop(double v, double a, double b) {
+        while (v > b) {
+            v -= b - a;
+        }
+        while (v < a) {
+            v += b - a;
+        }
+        return v;
+    }
+
+    /**
+     * 坐标合法范围
+     *
+     * @param v 点的经纬度值
+     * @param a 表示地球经纬度的范围的最小值，为负数
+     * @param b 表示地球经纬度的范围的最大值，为正数
+     * @return 范围内的点的坐标的经纬度值
+     */
+    private static double _getRange(double v, Double a, Double b) {
+        if (a != null) {
+            v = Math.max(v, a);
+        }
+        if (b != null) {
+            v = Math.min(v, b);
+        }
+        return v;
+    }
+
+    public static void main(String[] args) {
+//        Point2D.Double point1 = new Point2D.Double(106.614986,29.539876);
+//        Point2D.Double point2 = new Point2D.Double(106.613087,29.540485);
+//        List<Point2D.Double> pts = new ArrayList<Point2D.Double>();
+//        Point2D.Double pt1 = new Point2D.Double(106.607477,29.544864);
+//        Point2D.Double pt2 = new Point2D.Double(106.613572,29.548324);
+//        Point2D.Double pt3 = new Point2D.Double(106.619357,29.537421);
+//        Point2D.Double pt4 = new Point2D.Double(106.612988,29.537079);
+//        Point2D.Double pt5 = new Point2D.Double(106.615359,29.541143);
+//        pts.add(pt1);
+//        pts.add(pt2);
+//        pts.add(pt3);
+//        pts.add(pt4);
+//        pts.add(pt5);
+//        boolean b = IsPtInPoly(point1, pts);
+//        System.out.println("是否在多边形内："+b);
+//        boolean b1 = IsPtInPoly(point2, pts);
+//        System.out.println("是否在多边形内："+b1);
+//        Point2D.Double point = new Point2D.Double(116.404, 39.915);
+//        Point2D.Double center = new Point2D.Double(116.404, 39.915);
+//        Circle circle = new Circle();
+//        circle.setCenter(center);
+//        circle.setRadius(500d);
+//        boolean b = isPointInCircle(point, circle);
+//        System.out.println("是否在圆内:" + b);
+        
+        letAndLen2AddrForbd(116.404,39.915);
+    }
+
+    /**
+     * 根据百度地图经纬度获取省市区
+     */
+    public static String[] letAndLen2AddrForbd(double d, double f) {
+        //lat 纬度  lng  经度
+        String url = "http://api.map.baidu.com/geocoder/v2/?ak=UXAUG2vklTD00yypaZR0ByKU&callback=renderReverse&location="
+                + f + "," + d + "&output=json&pois=0";
+//        String res = "";
+//        String[] addr = new String[3];
+//        try {
+//            URL url = new URL(urlString);
+//            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+//            conn.setDoOutput(true);
+//            conn.setRequestMethod("POST");
+//            java.io.BufferedReader in = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream(), "UTF-8"));
+//            String line;
+//            while ((line = in.readLine()) != null) {
+//                res += line + "\n";
+//            }
+////            System.out.println(res);
+//            JSONObject json = JSONObject.fromObject(res);
+//            System.out.println(json);
+//        } catch (Exception e) {
+//            System.out.println("error in wapaction,and e is " + e.getMessage());
+//        }
+//        return addr;
+        try{
+    	String responseString = HttpClientUtil.getInstance().doGetRequest(url);
+    	String[] address = responseString.split("\\(");
+        String[] addrJson = address[1].split("\\)");
+        
+        JSONObject jsonObject = JSONObject.fromObject(addrJson[0]);
+        JSONObject formatted_address = jsonObject.getJSONObject("result").getJSONObject("formatted_address");
+        
+    	  JSONObject addressComponent = jsonObject.getJSONObject("result").getJSONObject("addressComponent");
+    	  String city = addressComponent.getString("city");
+          String district = addressComponent.getString("district");
+          System.out.println(responseString);
+          System.out.println(addressComponent);
+          System.out.println(city);
+        
+          System.out.println(formatted_address);
+        }
+    	  catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+        return null;
+    }
+
+}

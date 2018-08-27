@@ -1,0 +1,8 @@
+package com.translate.utils;
+
+public class LogUtil {
+	public static void main(String[] args) {
+		LogUtil
+	}
+}
+

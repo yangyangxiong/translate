@@ -1,0 +1,17 @@
+package translate;
+
+import org.junit.Test;
+
+import com.translate.utils.HttpClientUtil;
+
+public class Geotest {
+	@Test
+	public void Geo()
+	{
+		double lat=116.404;
+	    double lon=39.915;
+		 String url = "http://localhost:8080/translate/geo?lat=lat&lon=lon";
+		 String address=HttpClientUtil.getInstance().doGetRequest(url);
+		 System.out.print(address);
+	}
+}

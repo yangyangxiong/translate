@@ -1,0 +1,35 @@
+package translate;
+
+import net.sf.json.JSONObject;
+
+import org.junit.Test;
+
+import com.translate.utils.HttpClientUtil;
+
+public class Geotest {
+	@Test
+	public void Geo()
+	{
+		double lat=116.404;
+	    double lon=39.915;
+		 String url = "http://localhost:8080/translate/geo?lat=lat&lon=lon";
+		 String responseString = HttpClientUtil.getInstance().doGetRequest(url);
+	    	String[] address = responseString.split("\\(");
+	        String[] addrJson = address[1].split("\\)");
+	        
+	        JSONObject jsonObject = JSONObject.fromObject(addrJson[0]);
+		  JSONObject result = jsonObject.getJSONObject("result");
+	    
+	        JSONObject formatted_address = jsonObject.getJSONObject("result").getJSONObject("formatted_address");
+	        
+	      JSONObject addressComponent = jsonObject.getJSONObject("result").getJSONObject("addressComponent");
+    	  String city = addressComponent.getString("city");
+          String district = addressComponent.getString("district");
+          System.out.println(responseString);
+          System.out.println(addressComponent);
+          System.out.println(city);
+	        
+	          System.out.println(formatted_address);
+		 System.out.print(address);
+	}
+}
